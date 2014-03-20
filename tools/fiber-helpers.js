@@ -1,6 +1,7 @@
 var _ = require("underscore");
 var Fiber = require("fibers");
 var Future = require("fibers/future");
+var runLog = require('./run-log.js').runLog;
 
 // Use this to wrap callbacks that need to run in a fiber, when
 // passing callbacks to functions such as setTimeout that aren't
@@ -45,4 +46,36 @@ exports.firstTimeResolver = function (fut) {
       return;
     resolver(err, val);
   };
+};
+
+// Waits for one future given as an argument to be resolved. Throws if it threw,
+// otherwise returns undefined.
+exports.waitForOne = function (/* futures */) {
+  var fiber = Fiber.current;
+  if (!fiber)
+    throw Error("Can't waitForOne without a fiber");
+  if (arguments.length === 0)
+    throw Error("Must wait for at least one future");
+
+  var combinedFuture = new Future;
+  for (var i = 0; i < arguments.length; ++i) {
+    var f = arguments[i];
+    if (f.isResolved()) {
+      // Move its value into combinedFuture.
+      f.resolve(combinedFuture.resolver());
+      break;
+    }
+    // Otherwise, this function will be invoked when the future is resolved.
+    f.resolve(function (err, result) {
+      runLog.log("moving it in" + JSON.stringify(arguments))
+      if (!combinedFuture.isResolved()) {
+        runLog.log("really")
+        combinedFuture.resolver()(err, result);
+      }
+    });
+  }
+  runLog.log("WF1")
+try{
+  combinedFuture.wait();
+}finally{runLog.log("WF2")}
 };
